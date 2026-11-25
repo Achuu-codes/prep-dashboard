@@ -1,0 +1,93 @@
+### When to reach for this
+
+- **"A subtree's value from its children's values"** → one postorder DFS returning a value or a small struct. The recursion *is* the DP order; trees are acyclic so no explicit ordering is needed.
+- **"Pick a node or its children, never both"** → include/exclude: return a pair `{with u, without u}`.
+- **"Longest path / diameter / max path sum"** → at each node combine the **top two** child values for the path *turning* at `u`, but return only the best single downward branch.
+- **"Distribute a budget of k across the subtree"** → tree knapsack, merging child by child with size-bounded loops.
+- **"The answer for every node as the root"** → rerooting: one postorder pass, then one preorder pass that moves the root across each edge.
+
+### Templates
+
+```cpp
+// Diameter / max path sum: what you RETURN is not what you RECORD
+int best = INT_MIN;
+int down(TreeNode* u) {                   // best downward path starting at u
+    if (!u) return 0;
+    int l = max(0, down(u->left));        // clamp: drop a harmful branch
+    int r = max(0, down(u->right));
+    best = max(best, u->val + l + r);     // the path that TURNS at u
+    return u->val + max(l, r);            // the path that continues upward
+}
+```
+
+```cpp
+// Include / exclude on nodes ("rob the tree")
+pair<long long,long long> rob(TreeNode* u) {
+    if (!u) return {0, 0};                          // {with u, without u}
+    auto [wl, nl] = rob(u->left);
+    auto [wr, nr] = rob(u->right);
+    return { u->val + nl + nr,                      // take u: skip children
+             max(wl, nl) + max(wr, nr) };           // skip u: children free
+}
+```
+
+```cpp
+// Tree knapsack: dp[u][j] = best using exactly j nodes of u's subtree.
+// Bounding both loops by the CURRENT subtree sizes is what makes it O(n^2).
+vector<vector<int>> dp;
+vector<int> sz, val;
+void dfs(int u, int p, vector<vector<int>>& g) {
+    sz[u] = 1;
+    dp[u] = {0, val[u]};                            // j = 0, or just u
+    for (int v : g[u]) {
+        if (v == p) continue;
+        dfs(v, u, g);
+        vector<int> nxt(sz[u] + sz[v] + 1, INT_MIN);
+        for (int a = 0; a <= sz[u]; ++a)
+            for (int b = 0; b <= sz[v]; ++b)
+                nxt[a + b] = max(nxt[a + b], dp[u][a] + dp[v][b]);
+        sz[u] += sz[v];                             // AFTER the merge
+        dp[u] = move(nxt);
+    }
+}
+```
+
+```cpp
+// Rerooting, canonical form: sum of distances from every node to all others
+vector<int> cnt, res;
+void post(int u, int p, vector<vector<int>>& g) {
+    cnt[u] = 1; res[u] = 0;
+    for (int v : g[u]) if (v != p) {
+        post(v, u, g);
+        cnt[u] += cnt[v];
+        res[u] += res[v] + cnt[v];     // every node down there is one edge further
+    }
+}
+void pre(int u, int p, int n, vector<vector<int>>& g) {
+    for (int v : g[u]) if (v != p) {
+        res[v] = res[u] - cnt[v] + (n - cnt[v]);    // move the root across (u,v)
+        pre(v, u, n, g);
+    }
+}
+```
+
+### Complexity
+
+| Pattern | Time | Space |
+| --- | --- | --- |
+| Child aggregation / diameter | `O(n)` | `O(h)` recursion |
+| Include / exclude | `O(n)` | `O(h)` |
+| Tree knapsack (size-bounded) | `O(n²)` | `O(n²)` worst case |
+| Rerooting | `O(n)`, two passes | `O(n)` |
+
+### Pitfalls
+
+- **What you return is not what you record.** Returning the turning-path value lets a path bend twice and produces impossible answers.
+- `max(0, child)` is correct only when a branch may be *skipped*. If every node must be included, clamping silently discards required negatives.
+- Recursion depth: a path-shaped tree with `10^5` nodes blows the stack. Convert to an explicit stack, or process nodes in reverse BFS order.
+- Undirected adjacency needs the parent passed down (or a visited array), or the DFS walks straight back up.
+- Tree knapsack: bound the loops by the current `sz[u]` and `sz[v]`. Looping to `k` unconditionally is `O(n·k)` and loses the classic `O(n²)` argument.
+- Update `sz[u]` **after** merging child `v`, or the loop bounds for the next child are wrong.
+- Rerooting genuinely needs two passes. Any one-pass attempt is missing the parent-side contribution for the nodes visited early.
+- Pair-returning DP: write down which slot is "with" and which is "without". Swapping them compiles and quietly halves your answer.
+- A tree with `n` nodes has `n-1` edges and no cycles — if the input might be a forest or contain a cycle, it is not a tree problem.

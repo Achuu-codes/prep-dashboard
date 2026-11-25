@@ -1,0 +1,350 @@
+@import 'tailwindcss';
+
+/*
+ * Dark-mode-first. `:root` holds the dark palette, so dark is what you get
+ * with no JS and no preference. Light is an explicit opt-in via
+ * data-theme="light" on <html>, set by the toggle in the header.
+ */
+:root {
+  --bg: #0b0d10;
+  --bg-subtle: #0f1216;
+  --surface: #14181d;
+  --surface-hover: #1a1f26;
+  --border: #242a33;
+  --border-strong: #333b47;
+  --text: #e7eaee;
+  --text-muted: #98a2ae;
+  --text-faint: #6b7682;
+
+  --accent: #4ec9b0;
+  --accent-dim: #2f7f70;
+  --accent-contrast: #04120f;
+
+  --easy: #46c17f;
+  --medium: #e0a33a;
+  --hard: #ef5f6b;
+
+  --todo: #6b7682;
+  --attempted: #e0a33a;
+  --solved: #46c17f;
+  --revision: #a78bfa;
+
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+
+  /* ---- data-viz roles (validated; see README "Chart colours") ------------
+   * Chart FILLS are stepped for the dark surface (OKLCH L 0.48-0.67) and are
+   * deliberately different from the text badge colours above, which are
+   * stepped for text contrast instead. */
+  --viz-easy: #199e70;
+  --viz-medium: #c98500;
+  --viz-hard: #e34948;
+
+  /* Sequential, one hue, low -> high magnitude. LeetCode = blue. */
+  --seq-1: #1c5cab;
+  --seq-2: #2a78d6;
+  --seq-3: #5598e7;
+  --seq-4: #86b6ef;
+  /* Second sequential context on the same page takes the next hue: orange. */
+  --seq2-1: #7c3415;
+  --seq2-2: #aa4a1e;
+  --seq2-3: #d95926;
+  --seq2-4: #ef8f5c;
+
+  /* Categorical slots, fixed order, never cycled. */
+  --cat-1: #3987e5;
+  --cat-2: #d95926;
+  --cat-3: #199e70;
+  --cat-4: #c98500;
+  --cat-5: #d55181;
+  --cat-6: #0ca30c;
+  --cat-7: #9085e9;
+  --cat-8: #e66767;
+  --cat-other: #6b7682;
+
+  --grid: #2c2c2a;
+  --axis: #383835;
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg: #fbfbfc;
+  --bg-subtle: #f4f5f7;
+  --surface: #ffffff;
+  --surface-hover: #f4f5f7;
+  --border: #e3e6ea;
+  --border-strong: #cbd1d9;
+  --text: #15181c;
+  --text-muted: #5b6673;
+  --text-faint: #8a949f;
+
+  --accent: #0f8a74;
+  --accent-dim: #8fd4c6;
+  --accent-contrast: #ffffff;
+
+  --easy: #16935c;
+  --medium: #b57414;
+  --hard: #cf3b48;
+
+  --todo: #8a949f;
+  --attempted: #b57414;
+  --solved: #16935c;
+  --revision: #7c5cf0;
+
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 8px 24px -12px rgb(16 24 40 / 0.12);
+
+  --viz-easy: #008300;
+  --viz-medium: #eda100;
+  --viz-hard: #e34948;
+
+  --seq-1: #b7d3f6;
+  --seq-2: #6da7ec;
+  --seq-3: #2a78d6;
+  --seq-4: #184f95;
+  --seq2-1: #fbd9c4;
+  --seq2-2: #f3a076;
+  --seq2-3: #eb6834;
+  --seq2-4: #a63c14;
+
+  --cat-1: #2a78d6;
+  --cat-2: #eb6834;
+  --cat-3: #1baf7a;
+  --cat-4: #eda100;
+  --cat-5: #e87ba4;
+  --cat-6: #008300;
+  --cat-7: #6250d6;
+  --cat-8: #e34948;
+  --cat-other: #8a949f;
+
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-easy: var(--easy);
+  --color-medium: var(--medium);
+  --color-hard: var(--hard);
+  --color-todo: var(--todo);
+  --color-attempted: var(--attempted);
+  --color-solved: var(--solved);
+  --color-revision: var(--revision);
+  --color-viz-easy: var(--viz-easy);
+  --color-viz-medium: var(--viz-medium);
+  --color-viz-hard: var(--viz-hard);
+  --color-grid: var(--grid);
+  --color-axis: var(--axis);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas,
+    monospace;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  background: var(--bg);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Thin scrollbars that match the surface, not the OS default. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* ---------------------------------------------------- revision note styles */
+
+/*
+ * MDX notes are dense by design: tight headings, compact lists, and code
+ * blocks that stay readable at 13px. Shiki emits both themes; we pick one
+ * with a CSS variable so switching theme does not re-highlight.
+ */
+.note {
+  font-size: 14.5px;
+  line-height: 1.7;
+}
+.note > * + * {
+  margin-top: 0.85em;
+}
+.note h2 {
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin-top: 2em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 5rem;
+}
+.note h3 {
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: var(--text);
+  margin-top: 1.6em;
+  scroll-margin-top: 5rem;
+}
+.note h4 {
+  font-size: 0.85rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-top: 1.4em;
+}
+.note p,
+.note li {
+  color: var(--text);
+}
+.note ul,
+.note ol {
+  padding-left: 1.3em;
+}
+.note ul {
+  list-style: disc;
+}
+.note ol {
+  list-style: decimal;
+}
+.note li + li {
+  margin-top: 0.3em;
+}
+.note li::marker {
+  color: var(--text-faint);
+}
+.note strong {
+  font-weight: 650;
+  color: var(--text);
+}
+.note em {
+  color: var(--text-muted);
+}
+.note a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--accent-dim);
+}
+.note blockquote {
+  border-left: 2px solid var(--accent-dim);
+  padding: 0.1em 0 0.1em 1em;
+  color: var(--text-muted);
+}
+.note hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+.note table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  display: block;
+  overflow-x: auto;
+}
+.note th,
+.note td {
+  border: 1px solid var(--border);
+  padding: 0.4em 0.65em;
+  text-align: left;
+  vertical-align: top;
+}
+.note th {
+  background: var(--bg-subtle);
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.note td code {
+  white-space: nowrap;
+}
+
+/* Inline code */
+.note :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.87em;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+/* Shiki blocks */
+.note pre {
+  font-family: var(--font-mono);
+  font-size: 12.8px;
+  line-height: 1.6;
+  background: var(--bg-subtle) !important;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  tab-size: 2;
+}
+.note pre code {
+  font-family: inherit;
+}
+.note pre code .line {
+  display: block;
+}
+
+/* defaultColor:false means Shiki writes both themes as variables. */
+.shiki,
+.shiki span {
+  color: var(--shiki-dark);
+  background-color: transparent;
+}
+:root[data-theme='light'] .shiki,
+:root[data-theme='light'] .shiki span {
+  color: var(--shiki-light);
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

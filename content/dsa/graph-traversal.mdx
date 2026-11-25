@@ -1,0 +1,129 @@
+### When to reach for this
+
+- **"How many regions / islands / enclaves"** → flood fill from every unvisited cell, count the launches.
+- **"Fewest steps" and every move costs the same** → BFS. Never DFS: DFS finds *a* path, not the shortest.
+- **"Spreads from several places at once"** (rotting oranges, nearest `0`) → multi-source BFS. Seed the queue with *every* source at distance 0 and all distances fall out of one sweep.
+- **"Is there a cycle" in a directed graph** → DFS with three colours. A plain `visited` flag is not enough.
+- **"Two groups, no two adjacent alike"** → bipartite 2-colouring.
+- **State is a tuple** (position + keys held, position + parity, board configuration) → implicit graph: the node is the *encoded state*, neighbours are generated on demand.
+
+### Templates
+
+```cpp
+// 4-directional flood fill, iterative: recursion dies on a 10^5-cell snake
+const int DR[4] = {1,-1,0,0}, DC[4] = {0,0,1,-1};
+
+int flood(vector<vector<char>>& g, int sr, int sc) {
+    int R = g.size(), C = g[0].size(), area = 0;
+    vector<pair<int,int>> st{{sr, sc}};
+    g[sr][sc] = '0';                        // mark ON PUSH, never on pop
+    while (!st.empty()) {
+        auto [r, c] = st.back(); st.pop_back();
+        ++area;
+        for (int d = 0; d < 4; ++d) {
+            int nr = r + DR[d], nc = c + DC[d];
+            if (nr < 0 || nr >= R || nc < 0 || nc >= C) continue;
+            if (g[nr][nc] != '1') continue;
+            g[nr][nc] = '0';
+            st.push_back({nr, nc});
+        }
+    }
+    return area;
+}
+```
+
+```cpp
+// Multi-source BFS: all sources enqueued BEFORE the first pop
+vector<vector<int>> nearestZero(vector<vector<int>>& grid) {
+    int R = grid.size(), C = grid[0].size();
+    vector<vector<int>> dist(R, vector<int>(C, -1));
+    queue<pair<int,int>> q;
+    for (int r = 0; r < R; ++r)
+        for (int c = 0; c < C; ++c)
+            if (grid[r][c] == 0) { dist[r][c] = 0; q.push({r, c}); }
+    while (!q.empty()) {
+        auto [r, c] = q.front(); q.pop();
+        for (int d = 0; d < 4; ++d) {
+            int nr = r + DR[d], nc = c + DC[d];
+            if (nr < 0 || nr >= R || nc < 0 || nc >= C) continue;
+            if (dist[nr][nc] != -1) continue;
+            dist[nr][nc] = dist[r][c] + 1;
+            q.push({nr, nc});
+        }
+    }
+    return dist;
+}
+```
+
+```cpp
+// Directed cycle detection: 0 = unseen, 1 = on the current path, 2 = finished
+bool hasCycle(int u, vector<vector<int>>& g, vector<int>& col) {
+    col[u] = 1;
+    for (int v : g[u]) {
+        if (col[v] == 1) return true;              // back edge into active path
+        if (col[v] == 0 && hasCycle(v, g, col)) return true;
+    }
+    col[u] = 2;                                    // finished: safe to re-enter
+    return false;
+}
+```
+
+```cpp
+// Bipartite check, handling a disconnected graph
+bool bipartite(vector<vector<int>>& g) {
+    int n = g.size();
+    vector<int> col(n, -1);
+    for (int s = 0; s < n; ++s) {
+        if (col[s] != -1) continue;
+        col[s] = 0;
+        queue<int> q; q.push(s);
+        while (!q.empty()) {
+            int u = q.front(); q.pop();
+            for (int v : g[u]) {
+                if (col[v] == col[u]) return false;
+                if (col[v] == -1) { col[v] = col[u] ^ 1; q.push(v); }
+            }
+        }
+    }
+    return true;
+}
+```
+
+```cpp
+// Implicit state graph, level-by-level so `steps` is the answer
+int bfsStates(int start, int goal) {
+    unordered_set<int> seen{start};
+    queue<int> q; q.push(start);
+    for (int steps = 0; !q.empty(); ++steps) {
+        for (int sz = q.size(); sz > 0; --sz) {    // snapshot the level size
+            int s = q.front(); q.pop();
+            if (s == goal) return steps;
+            for (int t : neighbours(s))            // generated, never stored
+                if (seen.insert(t).second) q.push(t);
+        }
+    }
+    return -1;
+}
+```
+
+### Complexity
+
+| Pattern | Time | Space |
+| --- | --- | --- |
+| Grid flood fill | `O(R·C)` | `O(R·C)` frontier worst case |
+| Multi-source BFS | `O(R·C)` | `O(R·C)` |
+| DFS cycle detection | `O(V+E)` | `O(V)` colours + recursion depth |
+| Bipartite BFS | `O(V+E)` | `O(V)` |
+| Implicit state BFS | `O(S·b)` for `S` states, branching `b` | `O(S)` |
+
+### Pitfalls
+
+- **Mark visited on push, not on pop.** Marking at pop time lets the same cell sit in the queue many times — quadratic blow-up and, worse, wrong distances.
+- BFS is shortest-path **only when all edges cost the same**. One weighted edge and you need Dijkstra or 0-1 BFS.
+- Multi-source: seed every source before popping. Looping BFS once per source is `O(k·R·C)` and times out.
+- Recursive DFS is fine at `300×300`, but a path-shaped `10^5`-cell grid overflows the stack. The iterative version never does.
+- Directed cycles need the **on-path** colour. With a plain `visited` flag, a diamond (two paths re-reaching one node) is falsely reported as a cycle.
+- Undirected DFS cycle detection must skip the edge back to the parent — and skip it **by edge id**, not by node value, when parallel edges exist.
+- Level-by-level BFS: snapshot `q.size()` into a variable first. The queue grows while you drain it, so `for (int i = 0; i < q.size(); ++i)` never ends.
+- Mutating the input grid as the visited marker is fast and idiomatic, but document it — the caller may still need the grid.
+- Re-read whether movement is 4- or 8-directional. Diagonal connectivity changes the component count.

@@ -1,0 +1,106 @@
+### When to reach for this
+
+- **"Can a subset hit exactly S"** → 0/1 subset sum. A `bitset` makes it 64× faster for free.
+- **"How many ways to reach the target"** → counting knapsack. **Order of the loops decides whether order matters** (see below).
+- **"Unlimited copies of each item"** (coin change) → capacity loop **ascending**.
+- **"Exactly k equal groups"** → bucket-filling DFS with two prunings, or bitmask DP over used items.
+- **"Two budgets"** (zeros and ones, cost and weight) → 2D capacity `dp[i][j]`, both descending.
+- The giveaway is a **target number** plus a set of items each used once (or unlimited) — not a sequence where position matters.
+
+### Templates
+
+```cpp
+// 0/1 subset sum. Capacity loop DESCENDING so each item is used at most once.
+bool canPartition(vector<int>& a) {
+    int sum = accumulate(a.begin(), a.end(), 0);
+    if (sum & 1) return false;                 // odd total: impossible, exit early
+    int S = sum / 2;
+    vector<char> dp(S + 1, 0);
+    dp[0] = 1;
+    for (int v : a)
+        for (int s = S; s >= v; --s)           // descending
+            dp[s] |= dp[s - v];
+    return dp[S];
+}
+```
+
+```cpp
+// Same thing, word-parallel. Size must be a compile-time constant.
+bitset<20001> dp;
+dp[0] = 1;
+for (int v : a) dp |= dp << v;                 // one shift per item
+return dp[S];
+```
+
+```cpp
+// Unbounded (coin change): capacity ASCENDING so a coin can repeat
+int coinChange(vector<int>& coins, int amount) {
+    const int INF = 1e9;                       // not INT_MAX: we add 1 to it
+    vector<int> dp(amount + 1, INF);
+    dp[0] = 0;
+    for (int c : coins)
+        for (int s = c; s <= amount; ++s)       // ascending
+            dp[s] = min(dp[s], dp[s - c] + 1);
+    return dp[amount] >= INF ? -1 : dp[amount];
+}
+```
+
+```cpp
+// Counting: the LOOP ORDER is the whole specification.
+// Combinations -- {1,2} and {2,1} are the same: items OUTER
+for (int c : coins)
+    for (int s = c; s <= amount; ++s) ways[s] += ways[s - c];
+
+// Permutations -- {1,2} and {2,1} are different: capacity OUTER
+for (int s = 1; s <= amount; ++s)
+    for (int c : coins) if (s >= c) ways[s] += ways[s - c];
+```
+
+```cpp
+// Two constraints: dp[zeros][ones], both capacities descending
+for (auto& s : strs) {
+    int z = count(s.begin(), s.end(), '0'), o = (int)s.size() - z;
+    for (int i = m; i >= z; --i)
+        for (int j = n; j >= o; --j)
+            dp[i][j] = max(dp[i][j], dp[i - z][j - o] + 1);
+}
+```
+
+```cpp
+// k equal-sum groups. Both prunings are required for this to finish.
+bool fill(int i, vector<int>& bucket, const vector<int>& a, int target) {
+    if (i < 0) return true;
+    for (size_t b = 0; b < bucket.size(); ++b) {
+        if (bucket[b] + a[i] <= target) {
+            bucket[b] += a[i];
+            if (fill(i - 1, bucket, a, target)) return true;
+            bucket[b] -= a[i];
+        }
+        if (bucket[b] == 0) break;        // empty buckets are interchangeable
+    }
+    return false;
+}
+// call with `a` sorted DESCENDING and i = n-1
+```
+
+### Complexity
+
+| Pattern | Time | Space |
+| --- | --- | --- |
+| 0/1 subset sum | `O(n·S)` | `O(S)` |
+| `bitset` subset sum | `O(n·S / 64)` | `O(S / 8)` bytes |
+| Unbounded / coin change | `O(n·S)` | `O(S)` |
+| Two constraints | `O(n·C1·C2)` | `O(C1·C2)` |
+| k-group partition (DFS) | exponential, tractable with both prunings | `O(k + n)` |
+
+### Pitfalls
+
+- **Descending capacity for 0/1, ascending for unbounded.** Swapping them silently converts one problem into the other, and both compile and run.
+- **Items outer = combinations; capacity outer = permutations.** Decide which the statement wants before writing the loops.
+- `dp[0] = 1` for counting, `dp[0] = 0` with `INF` elsewhere for minimisation.
+- `INF = INT_MAX` then `dp[s-c] + 1` overflows to negative and poisons every later `min`. Use `1e9`.
+- Check the odd-sum shortcut before the DP: it is `O(n)` and removes a whole class of inputs.
+- `bitset` needs a constant size at compile time. Size it from the problem's stated maximum, not from the input.
+- Negative item values break the capacity-as-index formulation. Offset every index by the minimum, or switch to a hash map of reachable sums.
+- Reconstructing *which* items were chosen needs the 2D table (or a parent array); the rolling 1D version has thrown that away.
+- k-group partition without "sort descending" **and** "break on the first empty bucket" is exponential in practice, not just in theory.

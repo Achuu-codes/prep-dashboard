@@ -1,0 +1,110 @@
+### When to reach for this
+
+- **Non-negative weights, one source** → Dijkstra with a min-heap.
+- **Every weight is 0 or 1** → 0-1 BFS with a deque. `O(V+E)`, no heap, far less code than Dijkstra.
+- **All weights equal** → plain BFS. Reaching for Dijkstra here is a tell.
+- **"At most k edges / k stops"**, or any negative weight → Bellman-Ford, relaxed in rounds.
+- **All pairs, `n ≤ 400`** → Floyd-Warshall.
+- **"Minimise the largest single hop"** → Dijkstra with `max(d, w)` as the relaxation instead of `d + w`, or binary search the cap and run a plain reachability BFS.
+- **The state is more than a position** (fuel left, discounts used, parity, keys held) → Dijkstra over `dist[node][extra]`. The graph is the product of position and resource.
+
+### Templates
+
+```cpp
+// Dijkstra with lazy deletion. greater<> is what makes it a MIN-heap.
+vector<long long> dijkstra(int n, vector<vector<pair<int,int>>>& g, int s) {
+    const long long INF = LLONG_MAX / 4;          // /4 so INF + w cannot wrap
+    vector<long long> dist(n, INF);
+    priority_queue<pair<long long,int>, vector<pair<long long,int>>, greater<>> pq;
+    dist[s] = 0; pq.push({0, s});
+    while (!pq.empty()) {
+        auto [d, u] = pq.top(); pq.pop();
+        if (d != dist[u]) continue;               // stale entry: skip, don't expand
+        for (auto [v, w] : g[u])
+            if (d + w < dist[v]) { dist[v] = d + w; pq.push({dist[v], v}); }
+    }
+    return dist;
+}
+```
+
+```cpp
+// 0-1 BFS: weight 0 -> push_front, weight 1 -> push_back. Deque stays sorted.
+int zeroOneBFS(int n, vector<vector<pair<int,int>>>& g, int s, int t) {
+    vector<int> dist(n, INT_MAX);
+    deque<int> dq;
+    dist[s] = 0; dq.push_back(s);
+    while (!dq.empty()) {
+        int u = dq.front(); dq.pop_front();
+        for (auto [v, w] : g[u])
+            if (dist[u] + w < dist[v]) {
+                dist[v] = dist[u] + w;
+                if (w == 0) dq.push_front(v); else dq.push_back(v);
+            }
+    }
+    return dist[t];
+}
+```
+
+```cpp
+// At most k edges: relax from a FROZEN copy so round i uses exactly i edges
+int cheapestWithinKStops(int n, vector<array<int,3>>& edges, int s, int t, int k) {
+    const int INF = 1e9;
+    vector<int> dist(n, INF);
+    dist[s] = 0;
+    for (int round = 0; round <= k; ++round) {
+        vector<int> prev = dist;                  // the freeze IS the algorithm
+        for (auto& [u, v, w] : edges)
+            if (prev[u] < INF) dist[v] = min(dist[v], prev[u] + w);
+    }
+    return dist[t] == INF ? -1 : dist[t];
+}
+```
+
+```cpp
+// Dijkstra over augmented state: j = units of the extra resource spent
+vector<vector<long long>> dist(n, vector<long long>(K + 1, INF));
+priority_queue<array<long long,3>, vector<array<long long,3>>, greater<>> pq;
+dist[s][0] = 0; pq.push({0, s, 0});
+while (!pq.empty()) {
+    auto [d, u, j] = pq.top(); pq.pop();
+    if (d != dist[u][j]) continue;
+    for (auto [v, w] : g[u]) {
+        if (d + w < dist[v][j])                       // spend nothing
+            { dist[v][j] = d + w; pq.push({dist[v][j], v, j}); }
+        if (j + 1 <= K && d < dist[v][j+1])           // spend one unit
+            { dist[v][j+1] = d; pq.push({dist[v][j+1], v, j+1}); }
+    }
+}
+```
+
+```cpp
+// Floyd-Warshall. k is the OUTERMOST loop -- any other order is simply wrong.
+for (int k = 0; k < n; ++k)
+    for (int i = 0; i < n; ++i) {
+        if (d[i][k] >= INF) continue;
+        for (int j = 0; j < n; ++j)
+            if (d[k][j] < INF) d[i][j] = min(d[i][j], d[i][k] + d[k][j]);
+    }
+```
+
+### Complexity
+
+| Pattern | Time | Space |
+| --- | --- | --- |
+| Dijkstra (binary heap) | `O((V+E) log V)` | `O(V+E)` |
+| 0-1 BFS | `O(V+E)` | `O(V)` |
+| Bellman-Ford, `k` rounds | `O(k·E)` | `O(V)` |
+| Floyd-Warshall | `O(V³)` | `O(V²)` |
+| Dijkstra over `(node, resource)` | `O((V+E)·K log(V·K))` | `O(V·K)` |
+
+### Pitfalls
+
+- **Dijkstra with any negative edge is wrong**, and no amount of re-pushing nodes fixes it in general. Negative weights mean Bellman-Ford.
+- `priority_queue` is a **max**-heap by default. Omitting `greater<>` quietly computes something that is not a shortest path.
+- The `if (d != dist[u]) continue;` guard is what keeps lazy deletion efficient. Without it, nodes get re-expanded and the heap degrades.
+- **Overflow:** `10^5` edges at `10^9` each exceeds `int`. Use `long long`, and set `INF = LLONG_MAX / 4` so `INF + w` cannot wrap negative.
+- Bellman-Ford with a `k`-edge limit **must** relax from a frozen copy. Updating in place lets a single round traverse two edges, which silently allows more stops than permitted.
+- Floyd-Warshall: `k` outermost. Putting `i` or `j` first gives correct-looking answers that are wrong on sparse graphs.
+- 0-1 BFS pops a node more than once; the `dist` comparison on relax is what makes it terminate. Don't add a `visited` set "to optimise".
+- Undirected input means pushing **both** directions when you build the adjacency list.
+- "Minimise the maximum edge" is not sum-Dijkstra. Change the relaxation to `max`, or binary search + BFS.

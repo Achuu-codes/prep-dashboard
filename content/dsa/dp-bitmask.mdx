@@ -1,0 +1,90 @@
+### When to reach for this
+
+- **The constraint is the signal.** `n ≤ 20` (a million masks) means subset-as-state; `n ≤ 15` means `dp[mask][last]`; `n ≤ 16` with submask loops means `O(3^n)`.
+- **"Assign every item to exactly one slot, minimum cost"** → `dp[mask]` where `popcount(mask)` already tells you *which* slot you are filling, so no second dimension is needed.
+- **"Visit every node once"** (TSP, shortest Hamiltonian path, reorder to minimise cost) → `dp[mask][last]`.
+- **"Split the set into valid groups"** → submask enumeration: for each `mask`, try every `sub` as the next group.
+- **"Compatible pairs / no two adjacent"** → precompute a `bool ok[mask]` table once, then the DP is one line.
+- If `n` is above ~22, bitmask DP is not the intended solution, however natural it feels.
+
+### Templates
+
+```cpp
+// Assignment. popcount(mask) IS the index of the next person to place, so the
+// state is one-dimensional -- a 20x memory saving over dp[mask][person].
+int minAssignCost(vector<vector<int>>& cost) {        // cost[person][task]
+    int n = cost.size();
+    const int INF = 1e9;
+    vector<int> dp(1 << n, INF);
+    dp[0] = 0;
+    for (int mask = 0; mask < (1 << n); ++mask) {      // ascending: dp[mask] final
+        if (dp[mask] == INF) continue;
+        int p = __builtin_popcount(mask);
+        if (p == n) continue;
+        for (int t = 0; t < n; ++t)
+            if (!(mask >> t & 1))
+                dp[mask | 1 << t] = min(dp[mask | 1 << t], dp[mask] + cost[p][t]);
+    }
+    return dp[(1 << n) - 1];
+}
+```
+
+```cpp
+// TSP / shortest Hamiltonian path: dp[mask][last]
+int tsp(vector<vector<int>>& d) {
+    int n = d.size();
+    const int INF = 1e9;
+    vector<vector<int>> dp(1 << n, vector<int>(n, INF));
+    dp[1][0] = 0;                                      // started at node 0
+    for (int mask = 1; mask < (1 << n); ++mask)
+        for (int last = 0; last < n; ++last) {
+            if (dp[mask][last] == INF || !(mask >> last & 1)) continue;
+            for (int nxt = 0; nxt < n; ++nxt)
+                if (!(mask >> nxt & 1)) {
+                    int& to = dp[mask | 1 << nxt][nxt];
+                    to = min(to, dp[mask][last] + d[last][nxt]);
+                }
+        }
+    int best = INF;
+    for (int last = 0; last < n; ++last) best = min(best, dp[(1 << n) - 1][last]);
+    return best;
+}
+```
+
+```cpp
+// Submask enumeration, O(3^n) in total: partition the set into valid groups
+for (int mask = 1; mask < (1 << n); ++mask)
+    for (int sub = mask; sub; sub = (sub - 1) & mask)   // yields mask, never 0
+        if (ok[sub]) dp[mask] = min(dp[mask], dp[mask ^ sub] + 1);
+```
+
+```cpp
+// The bit vocabulary worth knowing by reflex
+int lowbit     = mask & -mask;                 // lowest set bit, as a value
+int idx        = __builtin_ctz(mask);          // its index (undefined for 0)
+int bits       = __builtin_popcount(mask);     // how many set
+int dropLow    = mask & (mask - 1);            // clear the lowest set bit
+bool has       = mask >> i & 1;                // test bit i
+int complement = ((1 << n) - 1) ^ mask;        // complement WITHIN n bits
+```
+
+### Complexity
+
+| Pattern | Time | Space | Practical `n` |
+| --- | --- | --- | --- |
+| `dp[mask]` assignment | `O(2^n · n)` | `O(2^n)` | 20–22 |
+| `dp[mask][last]` TSP | `O(2^n · n²)` | `O(2^n · n)` | 15–18 |
+| Submask enumeration | `O(3^n)` | `O(2^n)` | 16 |
+| Precomputed `ok[mask]` | `O(2^n · n)` once | `O(2^n)` | 20 |
+
+### Pitfalls
+
+- `1 << n` is an `int`. At `n ≥ 31` it overflows — use `1LL << n`.
+- The submask loop `for (sub = mask; sub; sub = (sub-1) & mask)` **never yields 0**. If the empty group is meaningful, handle it outside the loop.
+- The `popcount` trick is valid only when masks are processed in **ascending** order and every element is consumed exactly once. With optional items it breaks.
+- Do not index by `dp[mask][person]` when `person == popcount(mask)`. It is redundant state, and `2^20 × 20` ints is 80MB.
+- `__builtin_popcount` takes `unsigned int`. For 64-bit masks use `__builtin_popcountll`, or you silently count only the low 32 bits.
+- `__builtin_ctz(0)` is undefined behaviour. Guard the zero case.
+- `~mask` sets the high bits too. Complement **within n bits** by XOR-ing with `(1 << n) - 1`.
+- Use `1e9` for INF, not `INT_MAX`: `INT_MAX + cost` wraps negative and poisons every later `min`.
+- Iterate masks ascending so every transition adds a bit and reads a finalised state. Descending loops compute nonsense here.

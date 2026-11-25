@@ -1,0 +1,100 @@
+### When to reach for this
+
+- **"Best over a line with a local choice"** (rob/skip, pay/wait) → `dp[i]` from `dp[i-1]`, `dp[i-2]`. Keep two scalars, not an array.
+- **"A few modes you switch between"** (holding / sold / cooling down, even / odd, used-the-skip or not) → state-machine DP: one running value per mode.
+- **"How many ways to decode / split / build this"** → counting DP: `dp[i]` is a sum over every valid *last piece*.
+- **"Best contiguous subarray"** → Kadane: extend the run or restart at the current element.
+- **"Can I reach the end / fewest jumps"** → furthest-reach sweep; the level-by-level view gives the jump count in one pass.
+- The test: does position `i` depend on a **constant** number of earlier positions? Then it is 1D DP, and the space is `O(1)`.
+
+### Templates
+
+```cpp
+// Linear recurrence, O(1) space (house-robber shape)
+int robLine(vector<int>& a) {
+    int take = 0, skip = 0;        // take: best using i; skip: best not using i
+    for (int v : a) {
+        int ntake = skip + v;
+        int nskip = max(skip, take);
+        take = ntake; skip = nskip;        // compute BOTH, then assign
+    }
+    return max(take, skip);
+}
+```
+
+```cpp
+// State machine: trade with a one-day cooldown after selling
+int maxProfitCooldown(vector<int>& p) {
+    const int NEG = INT_MIN / 2;           // never INT_MIN: we add to it
+    int hold = NEG, sold = NEG, rest = 0;
+    for (int price : p) {
+        int nhold = max(hold, rest - price);   // keep holding, or buy from rest
+        int nsold = hold + price;              // sell today
+        int nrest = max(rest, sold);           // cooldown has elapsed
+        hold = nhold; sold = nsold; rest = nrest;
+    }
+    return max(sold, rest);
+}
+```
+
+```cpp
+// Counting decompositions: dp[i] = ways to build the prefix of length i
+int numDecodings(const string& s) {
+    int n = s.size();
+    vector<int> dp(n + 1, 0);
+    dp[0] = 1;                             // empty prefix: exactly one way
+    for (int i = 1; i <= n; ++i) {
+        if (s[i-1] != '0') dp[i] += dp[i-1];                  // 1-digit piece
+        if (i >= 2) {
+            int two = (s[i-2] - '0') * 10 + (s[i-1] - '0');
+            if (two >= 10 && two <= 26) dp[i] += dp[i-2];     // 2-digit piece
+        }
+    }
+    return dp[n];
+}
+```
+
+```cpp
+// Kadane. Initialise from a[0] so an all-negative array returns its max element.
+int maxSubarray(vector<int>& a) {
+    int cur = a[0], best = a[0];
+    for (size_t i = 1; i < a.size(); ++i) {
+        cur = max(a[i], cur + a[i]);       // restart, or extend
+        best = max(best, cur);
+    }
+    return best;
+}
+```
+
+```cpp
+// Fewest jumps: implicit BFS over reach levels, O(n), no dp array at all
+int jump(vector<int>& a) {
+    int jumps = 0, curEnd = 0, furthest = 0;
+    for (int i = 0; i + 1 < (int)a.size(); ++i) {    // stop at n-2
+        furthest = max(furthest, i + a[i]);
+        if (i == curEnd) { ++jumps; curEnd = furthest; }   // level exhausted
+    }
+    return jumps;
+}
+```
+
+### Complexity
+
+| Pattern | Time | Space |
+| --- | --- | --- |
+| Linear recurrence | `O(n)` | `O(1)` |
+| State machine, `k` modes | `O(n·k)` | `O(k)` |
+| Counting decompositions | `O(n)` | `O(n)`, or `O(1)` rolling |
+| Kadane | `O(n)` | `O(1)` |
+| Furthest-reach jumps | `O(n)` | `O(1)` |
+
+### Pitfalls
+
+- **Compute every new state into a temporary, then assign.** Overwriting `take` before `skip` reads it is the most common 1D DP bug, and it produces plausible output on short inputs.
+- `dp[0] = 1` for counting (the empty prefix has one decomposition); `dp[0] = 0` with `INF` elsewhere for minimisation. Mixing these up is the second most common bug.
+- Kadane on an all-negative array must return the largest element. Initialising `best = 0` returns 0 and passes the sample tests.
+- **Circular** variants: run the linear solver twice (exclude the first element, exclude the last) and take the max. Circular max-subarray additionally needs the all-negative case handled separately.
+- Counting overflows `int` quickly — take the modulus at **every** addition, not once at the end.
+- Decode-style counting: `'0'` can never begin a piece, and `"06"` is not a valid two-digit piece.
+- `INT_MIN` as the "impossible" sentinel breaks the instant you add to it. Use `INT_MIN / 2` or a named `NEG`.
+- Jump game loops to `n-2`. Including the last index adds one phantom jump.

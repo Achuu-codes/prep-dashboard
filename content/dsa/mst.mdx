@@ -1,0 +1,97 @@
+### When to reach for this
+
+- **"Connect everything at minimum total cost"** → MST. Kruskal when edges arrive as a list, Prim when the graph is dense or implicit.
+- **"Cost between every pair is a formula"** (points on a plane, bitwise distance) → the graph is complete with `n²` edges; dense Prim in `O(n²)` beats sorting `n²` edges.
+- **"Which edges are in every MST / in some MST"** → critical and pseudo-critical: force-exclude an edge and see if the weight rises, force-include it and see if the weight stays.
+- **"Minimise the largest edge on a route"** → any MST is also a minimum **bottleneck** spanning tree, so MST solves it directly.
+- Not MST: shortest path from a source. MST paths are not shortest paths, and the two answers differ on the simplest triangle.
+
+### Templates
+
+```cpp
+// Kruskal. Edges carry their original id so skip/force refer to input indices.
+// Sort ONCE outside; `e` is {w, u, v, id} pre-sorted by weight.
+long long kruskal(int n, const vector<array<int,4>>& e,
+                  int skipId = -1, int forceId = -1) {
+    DSU d(n);                                      // from the Union-Find note
+    long long total = 0;
+    int used = 0;
+    if (forceId >= 0)
+        for (auto& [w, u, v, id] : e)
+            if (id == forceId) { total += w; d.unite(u, v); ++used; break; }
+    for (auto& [w, u, v, id] : e) {
+        if (id == skipId || id == forceId) continue;
+        if (d.unite(u, v)) { total += w; ++used; }
+    }
+    return used == n - 1 ? total : LLONG_MAX;       // not spanning -> no MST
+}
+```
+
+```cpp
+// Dense / implicit Prim in O(n^2): no heap, no edge list materialised
+long long primDense(const vector<vector<int>>& pts) {
+    int n = pts.size();
+    vector<long long> best(n, LLONG_MAX);
+    vector<char> inTree(n, 0);
+    long long total = 0;
+    best[0] = 0;
+    for (int it = 0; it < n; ++it) {
+        int b = -1;
+        for (int v = 0; v < n; ++v)
+            if (!inTree[v] && (b < 0 || best[v] < best[b])) b = v;
+        inTree[b] = 1;
+        total += best[b];
+        for (int v = 0; v < n; ++v)                // distance to the TREE
+            if (!inTree[v]) best[v] = min(best[v], (long long)cost(pts[b], pts[v]));
+    }
+    return total;
+}
+```
+
+```cpp
+// Prim with a heap, for sparse graphs given as adjacency lists
+long long primHeap(int n, vector<vector<pair<int,int>>>& g) {
+    vector<char> inTree(n, 0);
+    priority_queue<pair<int,int>, vector<pair<int,int>>, greater<>> pq;
+    pq.push({0, 0});
+    long long total = 0;
+    int taken = 0;
+    while (!pq.empty() && taken < n) {
+        auto [w, u] = pq.top(); pq.pop();
+        if (inTree[u]) continue;                   // lazy deletion
+        inTree[u] = 1; total += w; ++taken;
+        for (auto [v, wt] : g[u]) if (!inTree[v]) pq.push({wt, v});
+    }
+    return taken == n ? total : LLONG_MAX;
+}
+```
+
+```cpp
+// Critical and pseudo-critical edges, O(E) Kruskal runs
+sort(e.begin(), e.end());                          // by weight; ids preserved
+long long base = kruskal(n, e);
+for (int id = 0; id < m; ++id) {
+    if (kruskal(n, e, /*skipId=*/id) > base)             critical.push_back(id);
+    else if (kruskal(n, e, -1, /*forceId=*/id) == base)  pseudo.push_back(id);
+}
+```
+
+### Complexity
+
+| Pattern | Time | Space |
+| --- | --- | --- |
+| Kruskal | `O(E log E)` sort + `O(E·α)` unions | `O(V+E)` |
+| Prim, binary heap | `O(E log V)` | `O(V+E)` |
+| Prim, dense / implicit | `O(V²)`, no edge list stored | `O(V)` |
+| Critical-edge scan | `O(E² α)` after one sort | `O(V+E)` |
+
+### Pitfalls
+
+- Store edges as `{w, u, v, id}` in that order so a plain `sort` compares weight first. `{u, v, w}` sorts by endpoint and produces nonsense.
+- **Keep the original id.** Sorting destroys input order, and "return the indices" problems then answer with post-sort positions.
+- Always verify `used == n - 1`. A disconnected graph has no spanning tree; returning the partial forest weight is the standard bug here.
+- Prim's `best[v]` is the distance **to the tree**, not to the start node. Reusing a Dijkstra template with `best[v] = best[u] + w` builds a shortest-path tree instead, and the totals differ.
+- Dense Prim is the right call for implicit complete graphs — materialising `n²` edges at `n = 1000` is a million entries to sort for nothing.
+- Self-loops and parallel edges are harmless to Kruskal (the DSU rejects them) but break hand-rolled "cheapest incident edge" logic.
+- Sort once, outside the critical-edge loop. Re-sorting inside turns `O(E²α)` into `O(E² log E)`.
+- MST weight is unique; the **edge set** is not. Problems asking for "the" MST edges must be pinning down ties somehow — look for it.

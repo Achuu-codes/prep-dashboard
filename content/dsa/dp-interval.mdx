@@ -1,0 +1,114 @@
+### When to reach for this
+
+- **"Remove an element and the cost depends on the neighbours still standing"** → think about the **last** removal in the range, not the first. That is what makes the subproblems independent.
+- **"Merge adjacent piles / chain of multiplications"** → `dp[i][j]` with a split point `k`, plus prefix sums for the merge cost.
+- **"Two players alternate and both play optimally"** → `dp[i][j]` = best achievable **difference**, not two separate scores.
+- **"Cut the string into palindromic / valid pieces"** → precompute a validity table, then a 1D DP over prefixes.
+- Shape test: the state is a **range** `(i, j)`, the transition chooses a split or a last action, and the loops run by **increasing length**.
+- `O(n³)` is the going rate here, so expect `n ≤ 500`. If `n` is `10^5`, interval DP is the wrong tool — look for a greedy or a stack.
+
+### Templates
+
+```cpp
+// The skeleton: by increasing length, split at k. Every interval DP is this
+// loop with a different inner expression.
+for (int len = 2; len <= n; ++len)
+    for (int i = 0; i + len - 1 < n; ++i) {
+        int j = i + len - 1;
+        for (int k = i; k < j; ++k)
+            dp[i][j] = min(dp[i][j], dp[i][k] + dp[k+1][j] + cost(i, j));
+    }
+```
+
+```cpp
+// Burst balloons: pad with 1s, and let k be the LAST balloon burst in (i..j),
+// so a[i-1] and a[j+1] are still standing when it pops.
+int maxCoins(vector<int>& nums) {
+    int n = nums.size();
+    vector<int> a(n + 2, 1);
+    for (int i = 0; i < n; ++i) a[i+1] = nums[i];
+    vector<vector<int>> dp(n + 2, vector<int>(n + 2, 0));
+    for (int len = 1; len <= n; ++len)
+        for (int i = 1; i + len - 1 <= n; ++i) {
+            int j = i + len - 1;
+            for (int k = i; k <= j; ++k)
+                dp[i][j] = max(dp[i][j],
+                               dp[i][k-1] + a[i-1] * a[k] * a[j+1] + dp[k+1][j]);
+        }
+    return dp[1][n];
+}
+```
+
+```cpp
+// Merge adjacent piles: the cost of merging a range is its total weight,
+// added ONCE after minimising over splits.
+int mergeCost(vector<int>& w) {
+    int n = w.size();
+    vector<int> pre(n + 1, 0);
+    for (int i = 0; i < n; ++i) pre[i+1] = pre[i] + w[i];
+    vector<vector<int>> dp(n, vector<int>(n, 0));
+    for (int len = 2; len <= n; ++len)
+        for (int i = 0; i + len - 1 < n; ++i) {
+            int j = i + len - 1;
+            dp[i][j] = INT_MAX;
+            for (int k = i; k < j; ++k)
+                dp[i][j] = min(dp[i][j], dp[i][k] + dp[k+1][j]);
+            dp[i][j] += pre[j+1] - pre[i];       // once, outside the k loop
+        }
+    return dp[0][n-1];
+}
+```
+
+```cpp
+// Alternating optimal play: dp[i][j] = (mover's total) - (opponent's total)
+int bestDiff(vector<int>& a) {
+    int n = a.size();
+    vector<vector<int>> dp(n, vector<int>(n, 0));
+    for (int i = 0; i < n; ++i) dp[i][i] = a[i];
+    for (int len = 2; len <= n; ++len)
+        for (int i = 0; i + len - 1 < n; ++i) {
+            int j = i + len - 1;
+            dp[i][j] = max(a[i] - dp[i+1][j],    // take left, then opponent moves
+                           a[j] - dp[i][j-1]);   // take right
+        }
+    return dp[0][n-1];                           // non-negative: first player wins
+}
+```
+
+```cpp
+// Palindrome partitioning: validity table first, then a 1D prefix DP
+int minCut(const string& s) {
+    int n = s.size();
+    vector<vector<char>> pal(n, vector<char>(n, 0));
+    for (int i = n - 1; i >= 0; --i)
+        for (int j = i; j < n; ++j)
+            pal[i][j] = s[i] == s[j] && (j - i < 2 || pal[i+1][j-1]);
+    vector<int> dp(n + 1, INT_MAX);
+    dp[0] = 0;
+    for (int j = 1; j <= n; ++j)
+        for (int i = 0; i < j; ++i)
+            if (pal[i][j-1] && dp[i] != INT_MAX) dp[j] = min(dp[j], dp[i] + 1);
+    return dp[n] - 1;                            // pieces, minus one, is cuts
+}
+```
+
+### Complexity
+
+| Pattern | Time | Space |
+| --- | --- | --- |
+| Interval DP with a split | `O(n³)` | `O(n²)` |
+| Burst balloons | `O(n³)` | `O(n²)` |
+| Game difference DP | `O(n²)` | `O(n²)`, `O(n)` rolling |
+| Palindrome partitioning | `O(n²)` | `O(n²)` for the table |
+| Merge with `k`-way constraint | `O(n³·k)` | `O(n²·k)` |
+
+### Pitfalls
+
+- **Iterate by length** (or `i` descending with `j` ascending). A plain `i` then `j` double loop reads cells that are not final yet, and the bug is invisible on tiny inputs.
+- Burst balloons: reasoning about the **first** balloon burst does not decompose — the neighbours change underneath you. Reasoning about the **last** one does.
+- Pad the array with sentinel `1`s. It removes every boundary special case, and `dp` sized `n+2` keeps `dp[i][k-1]` and `dp[k+1][j]` in range.
+- Add the merge cost **once**, after the loop over `k`. Inside the loop it gets multiplied by the number of splits considered.
+- Game DP: store the **difference**. Two-score formulations double the state space and invite sign errors.
+- `minCut` counts pieces; the answer is `pieces - 1`. This off-by-one is the single most reported bug on the problem.
+- `INT_MAX` sentinels must be checked before adding 1, or they wrap to `INT_MIN`.
+- Interval DP is cubic. Seeing `n = 10^5` means the intended solution is not this.

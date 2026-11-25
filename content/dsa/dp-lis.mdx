@@ -1,0 +1,97 @@
+### When to reach for this
+
+- **"Longest increasing subsequence"**, or anything that renames it (longest chain, most envelopes, tallest stack) → patience DP on a `tails` array, `O(n log n)`.
+- **"Pairs where one dominates the other"** (envelopes, boxes, courses) → sort on the first key, then run LIS on the second. The **tie-break direction is the whole trick**.
+- **"Minimum number of non-increasing runs to cover the array"** → by Dilworth's theorem that equals the LIS length. Same for "minimum piles / platforms / ski rentals".
+- **"Longest subsequence with a different predicate"** (bounded difference, divisibility) → the `O(n²)` DP, or a segment tree over values when `n` is large.
+- If you need the **count** of longest subsequences, not the length, the `tails` trick cannot give it — use the `O(n²)` DP with a count array.
+
+### Templates
+
+```cpp
+// LIS in O(n log n). tails[k] = smallest possible tail of a length-(k+1) IS.
+// lower_bound -> strictly increasing. upper_bound -> non-decreasing.
+int lengthOfLIS(vector<int>& a) {
+    vector<int> tails;
+    for (int v : a) {
+        auto it = lower_bound(tails.begin(), tails.end(), v);
+        if (it == tails.end()) tails.push_back(v);   // extends the longest run
+        else *it = v;                                // improves a tail
+    }
+    return tails.size();
+}
+```
+
+```cpp
+// Reconstructing an actual LIS: tails alone is the right LENGTH but the wrong
+// sequence, so keep where each element landed plus a parent chain.
+vector<int> lisSequence(vector<int>& a) {
+    int n = a.size();
+    vector<int> tails, tailIdx, parent(n, -1);
+    for (int i = 0; i < n; ++i) {
+        auto it = lower_bound(tails.begin(), tails.end(), a[i]);
+        int k = it - tails.begin();
+        parent[i] = k ? tailIdx[k-1] : -1;           // capture BEFORE updating
+        if (it == tails.end()) { tails.push_back(a[i]); tailIdx.push_back(i); }
+        else { *it = a[i]; tailIdx[k] = i; }
+    }
+    vector<int> out;
+    for (int i = tailIdx.back(); i != -1; i = parent[i]) out.push_back(a[i]);
+    reverse(out.begin(), out.end());
+    return out;
+}
+```
+
+```cpp
+// Chains / dominance: width ASCENDING, height DESCENDING on ties, LIS on height.
+// The descending tie-break is what forbids equal widths from nesting.
+int maxEnvelopes(vector<vector<int>>& e) {
+    sort(e.begin(), e.end(), [](const auto& x, const auto& y) {
+        return x[0] != y[0] ? x[0] < y[0] : x[1] > y[1];
+    });
+    vector<int> tails;
+    for (auto& p : e) {
+        auto it = lower_bound(tails.begin(), tails.end(), p[1]);
+        if (it == tails.end()) tails.push_back(p[1]); else *it = p[1];
+    }
+    return tails.size();
+}
+```
+
+```cpp
+// O(n^2) DP: the version to use when you need counts, or a custom predicate
+int lisWithCounts(vector<int>& a) {
+    int n = a.size(), best = 0, total = 0;
+    vector<int> len(n, 1), cnt(n, 1);
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < i; ++j)
+            if (a[j] < a[i]) {
+                if (len[j] + 1 > len[i]) { len[i] = len[j] + 1; cnt[i] = cnt[j]; }
+                else if (len[j] + 1 == len[i]) cnt[i] += cnt[j];
+            }
+    for (int i = 0; i < n; ++i) best = max(best, len[i]);
+    for (int i = 0; i < n; ++i) if (len[i] == best) total += cnt[i];
+    return total;
+}
+```
+
+### Complexity
+
+| Pattern | Time | Space |
+| --- | --- | --- |
+| LIS via `tails` | `O(n log n)` | `O(n)` |
+| LIS reconstruction | `O(n log n)` | `O(n)` |
+| Chains after sorting | `O(n log n)` | `O(n)` |
+| `O(n²)` DP with counts | `O(n²)` | `O(n)` |
+| LIS with a value-indexed segment tree | `O(n log V)` | `O(V)` |
+
+### Pitfalls
+
+- **`lower_bound` for strictly increasing, `upper_bound` for non-decreasing.** One function name is the entire difference between the two problems.
+- `tails` is **not** an increasing subsequence of the input — only its length is meaningful. Printing it as the answer is the classic trap.
+- Dominance problems: sorting the second key **ascending** on ties lets two equal widths chain, inflating the answer. Descending forbids it.
+- In the reconstruction, capture `parent[i]` from `tailIdx[k-1]` *before* writing `tailIdx[k]`.
+- Strict vs non-strict matters in the dominance sort too — "strictly smaller in both dimensions" and "smaller or equal" are different problems.
+- The `O(n²)` DP is fine up to `n ≈ 2500`, which covers plain LIS on LeetCode; the chain problems ship `10^5` and demand the `log` version.
+- Counting longest subsequences needs the `O(n²)` formulation (or a segment tree). There is no `tails` variant that counts.
+- Dilworth's theorem is a two-line solution to a family of problems that look like greedy simulations. Recognising it is worth more than the code.

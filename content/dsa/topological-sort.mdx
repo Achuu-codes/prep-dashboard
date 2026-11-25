@@ -1,0 +1,85 @@
+### When to reach for this
+
+- **"Prerequisites / build order / can every task finish"** → Kahn's indegree BFS. If fewer than `n` nodes come out, there is a cycle.
+- **"Any valid order"** → Kahn's with a `queue`. **"Smallest lexicographic order"** → the same loop with a min-heap.
+- **"Longest chain / best value along a dependency graph"** → DP in topological order: every state's dependencies are final before it is read.
+- **"Reverse DFS postorder"** when you want the recursion anyway (subtree aggregates, colouring).
+- The graph must be a **DAG**. If the statement permits cycles, the answer is usually "detect the cycle and report impossible".
+
+### Templates
+
+```cpp
+// Kahn's. Returns an empty vector when a cycle exists -- that check is free.
+vector<int> kahn(int n, vector<vector<int>>& g) {
+    vector<int> indeg(n, 0), order;
+    for (int u = 0; u < n; ++u) for (int v : g[u]) ++indeg[v];
+    queue<int> q;
+    for (int u = 0; u < n; ++u) if (indeg[u] == 0) q.push(u);
+    while (!q.empty()) {
+        int u = q.front(); q.pop();
+        order.push_back(u);
+        for (int v : g[u]) if (--indeg[v] == 0) q.push(v);
+    }
+    return order.size() == (size_t)n ? order : vector<int>{};
+}
+```
+
+```cpp
+// Lexicographically smallest topological order: min-heap instead of a queue
+priority_queue<int, vector<int>, greater<>> pq;
+for (int u = 0; u < n; ++u) if (indeg[u] == 0) pq.push(u);
+while (!pq.empty()) {
+    int u = pq.top(); pq.pop();
+    order.push_back(u);
+    for (int v : g[u]) if (--indeg[v] == 0) pq.push(v);
+}
+```
+
+```cpp
+// DFS postorder. Reverse of the finish order IS a topological order.
+bool dfs(int u, vector<vector<int>>& g, vector<int>& col, vector<int>& out) {
+    col[u] = 1;
+    for (int v : g[u]) {
+        if (col[v] == 1) return false;                 // cycle
+        if (col[v] == 0 && !dfs(v, g, col, out)) return false;
+    }
+    col[u] = 2;
+    out.push_back(u);                                  // push AFTER children
+    return true;
+}
+// ... then reverse(out.begin(), out.end());
+```
+
+```cpp
+// DP over topological order: longest path in a DAG (add w for weighted edges)
+int longestPath(int n, vector<vector<int>>& g) {
+    vector<int> order = kahn(n, g), dp(n, 0);
+    int best = 0;
+    for (int u : order)                   // u's value is final when reached
+        for (int v : g[u]) {
+            dp[v] = max(dp[v], dp[u] + 1);
+            best = max(best, dp[v]);
+        }
+    return best;
+}
+```
+
+### Complexity
+
+| Pattern | Time | Space |
+| --- | --- | --- |
+| Kahn's BFS | `O(V+E)` | `O(V)` |
+| Lexicographic (min-heap) | `O(V log V + E)` | `O(V)` |
+| DFS postorder | `O(V+E)` | `O(V)` + recursion |
+| DP over topo order | `O(V+E)` | `O(V)` |
+
+### Pitfalls
+
+- **Edge direction is the bug in this topic.** A pair `[a, b]` may mean "`b` before `a`" or "`a` before `b`". Write the arrow down before you code; reversing it yields a perfectly plausible, wrong order.
+- Build `indeg` from the same adjacency you traverse. Counting outdegree by accident produces an order that works on symmetric test cases only.
+- Always check `order.size() == n`. Skipping it returns a truncated prefix that looks valid.
+- In the DFS version, push to `out` **after** recursing, then reverse. Pushing before gives preorder, which is not a topological order.
+- Lexicographically smallest needs a min-heap **at every step** — sorting one Kahn output afterwards is a different (wrong) thing.
+- `--indeg[v] == 0` must be a pre-decrement comparison. `indeg[v]-- == 0` enqueues at the wrong moment and pushes nodes twice.
+- A DAG usually has many valid orders. If the problem expects one exact answer, it is forcing lexicographic order or a specific tie-break.
+- DAG DP must iterate the *order array* and relax outgoing edges. Iterating nodes `0..n-1` reads unfinished states.

@@ -1,0 +1,87 @@
+### When to reach for this
+
+- **"How many numbers in `[L, R]` satisfy a digit property"** → digit DP, and the range answer is always `f(R) - f(L-1)`.
+- **Bounds like `10^9` or `10^18`** rule out iteration. 18 positions times a tiny state is the shape to look for.
+- **The property must be verifiable left to right** with small state: digit sum, value mod `d`, set of digits used, "no two equal adjacent", count of a particular digit.
+- **"The k-th number with this property"** → binary search the answer and count with the same digit DP.
+- If the property is positionally independent (distinct digits, free suffixes), plain **combinatorics** is shorter than a DP — count the shorter lengths in closed form and handle the equal-prefix case digit by digit.
+
+### Templates
+
+```cpp
+// Count x in [0, N] with a digit property.
+// `tight` and `lead` are passed but NOT memoised: they describe the prefix,
+// not the state, so caching on them leaks counts between different bounds.
+string S;
+long long memo[20][STATE];                   // -1 = unset
+
+long long go(int pos, int st, bool tight, bool lead) {
+    if (pos == (int)S.size()) return accept(st, lead) ? 1 : 0;
+    if (!tight && !lead && memo[pos][st] != -1) return memo[pos][st];
+
+    int hi = tight ? S[pos] - '0' : 9;       // tight: cannot exceed N's digit
+    long long total = 0;
+    for (int d = 0; d <= hi; ++d) {
+        if (!valid(st, d)) continue;
+        bool nlead = lead && d == 0;         // still in the leading-zero run
+        int nst = nlead ? st : next(st, d);  // leading zeros update nothing
+        total += go(pos + 1, nst, tight && d == hi, nlead);
+    }
+    if (!tight && !lead) memo[pos][st] = total;
+    return total;
+}
+
+long long countUpTo(long long n) {
+    if (n < 0) return 0;                     // guards L = 0
+    S = to_string(n);
+    memset(memo, -1, sizeof memo);           // reset: a new bound, new lengths
+    return go(0, INIT, true, true);
+}
+
+long long inRange(long long L, long long R) {
+    return countUpTo(R) - countUpTo(L - 1);
+}
+```
+
+```cpp
+// Concrete state examples -- all small enough to memoise
+// digit sum         : st = sum so far            (0..162 for 18 digits)
+// divisibility by d : st = value mod d           (0..d-1)
+// digits used       : st = 10-bit mask           (0..1023)
+// no equal adjacent : st = previous digit        (0..10, 10 = none yet)
+// at most k of 'x'  : st = count so far, capped  (0..k+1)
+```
+
+```cpp
+// Counting without a DP, when positions are independent: numbers below a given
+// length with all-distinct digits
+long long shorterLengths(int len) {           // lengths 1 .. len-1
+    long long total = 0;
+    for (int L = 1; L < len; ++L) {
+        long long ways = 9;                   // first digit: 1..9
+        for (int i = 1; i < L; ++i) ways *= (10 - i);
+        total += ways;
+    }
+    return total;
+}
+```
+
+### Complexity
+
+| Quantity | Value |
+| --- | --- |
+| Positions | `O(log N)` — 19 for `10^18` |
+| Time | `O(log N · states · 10)` |
+| Space | `O(log N · states)` for the memo |
+| Range query | two `countUpTo` calls |
+
+### Pitfalls
+
+- **Never memoise on `tight`.** A tight prefix is one specific number, not a reusable state; caching it returns counts computed under a different bound.
+- Reset the memo between `countUpTo(R)` and `countUpTo(L-1)`. The cached suffix counts depend on the remaining length, which differs when the bounds have different digit counts.
+- Handle the leading-zero run explicitly if the property treats zeros specially ("digits used", "no equal adjacent"). Otherwise `007` looks like it contains two zeros.
+- `countUpTo(L - 1)` with `L = 0` must return 0, not recurse on `"-1"`.
+- Decide whether **0 itself** counts. Half the wrong answers in this topic are off by exactly one.
+- Counts reach `10^18`: use `long long` throughout, including the memo table.
+- Keep the state genuinely small. "The number so far" is not a state; "the number so far mod `d`" is.
+- `tight && d == hi` is the only way `tight` propagates. Writing `tight && d <= hi` keeps every branch tight and massively undercounts.

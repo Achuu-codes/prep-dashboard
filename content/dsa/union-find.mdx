@@ -1,0 +1,96 @@
+### When to reach for this
+
+- **"Are these two in the same group"**, with merges only and no splits → DSU.
+- **"How many components after these edges"** → keep a counter, decrement on each *successful* union.
+- **"Which edge creates a cycle / redundant connection"** → the edge whose `unite` returns `false`.
+- **"Earliest moment everything is connected"** → feed edges in time order, stop when the component count hits 1.
+- **"Equations / ratios / parity between pairs"** → DSU carrying extra state on the path to the root.
+- **Edges disappear over time** → DSU cannot undo. Reverse the timeline and treat removals as additions.
+- Not DSU: anything asking for a **path, distance or shortest route**. DSU knows connectivity, nothing else.
+
+### Templates
+
+```cpp
+// Union by size + path halving. Iterative find: no recursion depth risk.
+struct DSU {
+    vector<int> p, sz;
+    int comp;
+    explicit DSU(int n) : p(n), sz(n, 1), comp(n) { iota(p.begin(), p.end(), 0); }
+
+    int find(int x) {
+        while (p[x] != x) x = p[x] = p[p[x]];     // halve as we walk up
+        return x;
+    }
+    bool unite(int a, int b) {
+        a = find(a); b = find(b);
+        if (a == b) return false;                 // false = already joined
+        if (sz[a] < sz[b]) swap(a, b);            // attach smaller under bigger
+        p[b] = a; sz[a] += sz[b]; --comp;
+        return true;
+    }
+    bool same(int a, int b) { return find(a) == find(b); }
+    int size(int x) { return sz[find(x)]; }
+};
+```
+
+```cpp
+// Grid DSU: flatten (r,c) -> r*C+c, and only unite right and down to avoid dupes
+DSU d(R * C);
+for (int r = 0; r < R; ++r)
+    for (int c = 0; c < C; ++c) {
+        if (g[r][c] != '1') continue;
+        if (r + 1 < R && g[r+1][c] == '1') d.unite(r*C + c, (r+1)*C + c);
+        if (c + 1 < C && g[r][c+1] == '1') d.unite(r*C + c, r*C + c + 1);
+    }
+```
+
+```cpp
+// DSU with extra state: w[x] = value(x) / value(parent(x)), composed on find
+struct WeightedDSU {
+    vector<int> p;
+    vector<double> w;
+    explicit WeightedDSU(int n) : p(n), w(n, 1.0) { iota(p.begin(), p.end(), 0); }
+
+    int find(int x) {
+        if (p[x] == x) return x;
+        int root = find(p[x]);
+        w[x] *= w[p[x]];              // compose BEFORE repointing, or lose a factor
+        return p[x] = root;
+    }
+    void unite(int a, int b, double k) {       // value(a) = k * value(b)
+        int ra = find(a), rb = find(b);
+        if (ra == rb) return;
+        p[ra] = rb;
+        w[ra] = k * w[b] / w[a];
+    }
+};
+```
+
+```cpp
+// Offline / reverse time: "last moment the grid is still connected"
+int ans = -1;
+for (int t = (int)removals.size() - 1; t >= 0; --t) {
+    addBack(removals[t]);                       // additions are cheap, removals aren't
+    if (d.comp == 1) { ans = t; break; }
+}
+```
+
+### Complexity
+
+| Operation | Time | Space |
+| --- | --- | --- |
+| `find` / `unite` (both heuristics) | `O(α(n))` amortised — constant in practice | `O(n)` |
+| Path compression only | `O(log n)` amortised | `O(n)` |
+| Union by size only | `O(log n)` worst case | `O(n)` |
+| `k` queries over `n` nodes | `O(n + k·α(n))` | `O(n)` |
+
+### Pitfalls
+
+- Compare **roots**, never raw labels. `p[a] == p[b]` is not `same(a, b)`.
+- `unite` returning `false` is the answer to a whole class of problems (redundant edge, cycle found). Don't throw it away.
+- Decrement the component counter inside `unite`, only on success. Decrementing per edge counts duplicates.
+- Recursive `find` with compression is usually fine, but a freshly built chain can recurse `10^5` deep **before** the first compression flattens it. The iterative version cannot.
+- Weighted DSU: compose the weight before repointing the parent. Doing it after silently drops a factor and the bug only shows on paths of length 3+.
+- Flattening a grid: `r*C + c` with the **column count**. `r*R + c` is the classic silent bug that only fails on non-square grids.
+- Two separate DSUs are usually the right move for "same group" + "definitely different group" constraints; faking it with one structure and offsets is error-prone.
+- Sizes are only valid at the root. Read `sz[find(x)]`, never `sz[x]`.

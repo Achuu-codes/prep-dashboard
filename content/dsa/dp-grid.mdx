@@ -1,0 +1,111 @@
+### When to reach for this
+
+- **"Count paths corner to corner"** → `dp[r][c] = dp[r-1][c] + dp[r][c-1]`, one rolling row of memory.
+- **"Cheapest / most valuable path"** → same recurrence with `min`/`max` plus the cell's own cost.
+- **"You may break k walls / hold k keys / use k teleports"** → push the resource into the state: `dp[r][c][k]`.
+- **"Two robots / two passes collecting"** → use **one time axis**: after `t` steps a walker in column `c` is on row `t - c`, so the state is `(t, c1, c2)`, not four coordinates.
+- **"Largest all-ones square"** → DP on the bottom-right corner. **"Largest rectangle"** → per-row histogram plus a monotonic stack; a different algorithm, not a tweak.
+- Grid DP needs an **acyclic** move set (right/down). The moment movement includes up or left, it is BFS / Dijkstra / 0-1 BFS, not DP.
+
+### Templates
+
+```cpp
+// Path counting with obstacles, one rolling row.
+// dp[c] holds row r-1 when read as "up" and row r once written.
+int uniquePaths(vector<vector<int>>& grid) {
+    int R = grid.size(), C = grid[0].size();
+    vector<long long> dp(C, 0);
+    dp[0] = grid[0][0] ? 0 : 1;
+    for (int r = 0; r < R; ++r)
+        for (int c = 0; c < C; ++c) {
+            if (grid[r][c]) { dp[c] = 0; continue; }   // obstacle: zero, no add
+            if (c > 0) dp[c] += dp[c-1];               // left is already row r
+        }
+    return dp[C-1];
+}
+```
+
+```cpp
+// Minimum path sum, in place. Destroys the input -- fine if the caller is done.
+int minPathSum(vector<vector<int>>& g) {
+    int R = g.size(), C = g[0].size();
+    for (int r = 0; r < R; ++r)
+        for (int c = 0; c < C; ++c) {
+            if (r == 0 && c == 0) continue;
+            int up   = r ? g[r-1][c] : INT_MAX;
+            int left = c ? g[r][c-1] : INT_MAX;
+            g[r][c] += min(up, left);
+        }
+    return g[R-1][C-1];
+}
+```
+
+```cpp
+// Largest all-ones square: 1 + min(left, up, diagonal), rolling row.
+int maximalSquare(vector<vector<char>>& m) {
+    int R = m.size(), C = m[0].size(), best = 0;
+    vector<int> dp(C + 1, 0);
+    for (int r = 0; r < R; ++r) {
+        int prevDiag = 0;
+        for (int c = 0; c < C; ++c) {
+            int up = dp[c+1];                          // row r-1, column c
+            dp[c+1] = m[r][c] == '1'
+                    ? 1 + min({dp[c], up, prevDiag})   // left, up, diag
+                    : 0;
+            prevDiag = up;                             // becomes next diagonal
+            best = max(best, dp[c+1]);
+        }
+    }
+    return best * best;
+}
+```
+
+```cpp
+// Two walkers, ONE time axis. At step t, column c means row t - c.
+int cherryPickup(vector<vector<int>>& g) {
+    int n = g.size();
+    const int NEG = INT_MIN / 2;
+    vector<vector<int>> dp(n, vector<int>(n, NEG)), nxt;
+    dp[0][0] = g[0][0];
+    for (int t = 1; t <= 2 * (n - 1); ++t) {
+        nxt.assign(n, vector<int>(n, NEG));
+        for (int c1 = max(0, t - (n-1)); c1 <= min(n-1, t); ++c1)
+            for (int c2 = c1; c2 <= min(n-1, t); ++c2) {   // keep c1 <= c2
+                int r1 = t - c1, r2 = t - c2;
+                if (g[r1][c1] < 0 || g[r2][c2] < 0) continue;      // blocked
+                int best = NEG;
+                for (int d1 = 0; d1 <= 1; ++d1)
+                    for (int d2 = 0; d2 <= 1; ++d2) {
+                        int p1 = c1 - d1, p2 = c2 - d2;
+                        if (p1 < 0 || p2 < 0 || p1 > p2) continue;
+                        best = max(best, dp[p1][p2]);
+                    }
+                if (best == NEG) continue;
+                nxt[c1][c2] = best + g[r1][c1] + (c1 == c2 ? 0 : g[r2][c2]);
+            }
+        dp.swap(nxt);
+    }
+    return max(0, dp[n-1][n-1]);
+}
+```
+
+### Complexity
+
+| Pattern | Time | Space |
+| --- | --- | --- |
+| Path counting / min path | `O(R·C)` | `O(C)` rolling, or `O(1)` in place |
+| Grid DP with resource `k` | `O(R·C·k)` | `O(C·k)` |
+| Maximal square | `O(R·C)` | `O(C)` |
+| Two walkers, time axis | `O(n³)` | `O(n²)` |
+| Maximal rectangle (histogram) | `O(R·C)` | `O(C)` |
+
+### Pitfalls
+
+- With a rolling row, **write order is the algorithm**: `dp[c]` must still be row `r-1` when used as "up" and already row `r` when used as "left". Reorder the statements and it quietly computes something else.
+- Obstacles must **zero** `dp[c]` and skip the addition. Only skipping leaves last row's count in place.
+- Two walkers: never a 4D `dp` over `(r1,c1,r2,c2)`. They move in lockstep, so one time index removes a whole dimension — and the 4D version is usually wrong, not just slow.
+- When both walkers stand on the same cell, count it **once**. That `c1 == c2 ? 0 : ...` is the entire difficulty of this family.
+- `NEG` sentinel for unreachable states, and check it before adding. `INT_MIN + value` wraps to a huge positive.
+- Path counts overflow `int` at modest grid sizes. Use `long long` or the required modulus.
+- In-place DP destroys the caller's grid — say so, or copy.
+- Maximal square and maximal rectangle are different algorithms. Reaching for `min(left, up, diag)` on a rectangle problem gives wrong answers on wide shapes.

@@ -1,0 +1,98 @@
+### When to reach for this
+
+- **Counting / "how many of X"** → `unordered_map<T,int>` frequency table.
+- **"Group things that are the same up to some transform"** → build a *canonical key* (sorted string, 26-count tuple, normalised ratio) and bucket on it.
+- **"Answer at i depends on everything except i"** → prefix and suffix sweeps.
+- **Values are a permutation of `1..n`, or bounded by `n`** → the array *is* the hash table. Place value `v` at index `v-1`. This is how you get `O(1)` extra space.
+- **"Longest run / consecutive"** → `unordered_set`, and only start walking from a sequence head.
+
+### Templates
+
+```cpp
+// Frequency table, then top-k by bucket (O(n), beats a heap)
+vector<int> topKFrequent(vector<int>& nums, int k) {
+    unordered_map<int,int> cnt;
+    for (int v : nums) ++cnt[v];
+    vector<vector<int>> bucket(nums.size() + 1);
+    for (auto& [v, c] : cnt) bucket[c].push_back(v);
+    vector<int> out;
+    for (int c = (int)nums.size(); c >= 1 && (int)out.size() < k; --c)
+        for (int v : bucket[c]) {
+            out.push_back(v);
+            if ((int)out.size() == k) break;
+        }
+    return out;
+}
+```
+
+```cpp
+// Canonical key: 26-count signature avoids the O(L log L) sort per word
+string key(const string& s) {
+    array<int,26> c{};
+    for (char ch : s) ++c[ch - 'a'];
+    string k;
+    for (int i = 0; i < 26; ++i) { k += '#'; k += to_string(c[i]); }
+    return k;
+}
+```
+
+```cpp
+// Prefix * suffix in one output array, O(1) extra space
+vector<int> productExceptSelf(vector<int>& a) {
+    int n = a.size();
+    vector<int> out(n, 1);
+    for (int i = 1; i < n; ++i) out[i] = out[i-1] * a[i-1];  // prefix
+    int suf = 1;
+    for (int i = n - 1; i >= 0; --i) { out[i] *= suf; suf *= a[i]; }
+    return out;
+}
+```
+
+```cpp
+// Index as hash: cyclic placement. Each value is moved at most once -> O(n)
+int firstMissingPositive(vector<int>& a) {
+    int n = a.size();
+    for (int i = 0; i < n; ++i)
+        while (a[i] > 0 && a[i] <= n && a[a[i] - 1] != a[i])
+            swap(a[i], a[a[i] - 1]);          // guard on VALUE, not index
+    for (int i = 0; i < n; ++i) if (a[i] != i + 1) return i + 1;
+    return n + 1;
+}
+```
+
+```cpp
+// Longest consecutive sequence: only walk from a head
+int longestConsecutive(vector<int>& nums) {
+    unordered_set<int> s(nums.begin(), nums.end());
+    int best = 0;
+    for (int v : s) {
+        if (s.count(v - 1)) continue;         // not a head, skip
+        int len = 1;
+        while (s.count(v + len)) ++len;
+        best = max(best, len);
+    }
+    return best;
+}
+```
+
+### Complexity
+
+| Pattern | Time | Space |
+| --- | --- | --- |
+| Frequency map | `O(n)` | `O(n)` |
+| Bucket top-k | `O(n)` | `O(n)` |
+| Canonical-key grouping | `O(n·L)` with count key, `O(n·L log L)` with sort key | `O(n·L)` |
+| Prefix/suffix sweep | `O(n)` | `O(1)` extra |
+| Index-as-hash placement | `O(n)` amortised | `O(1)` |
+
+`unordered_map` is `O(1)` *expected*. Adversarial integer keys can force collisions; if a problem is being hostile, use `map` (`O(log n)`) or mix the hash with a random constant.
+
+### Pitfalls
+
+- **Cyclic placement with a `while`, not an `if`.** After a swap the new `a[i]` may also be misplaced.
+- Guard the swap on `a[a[i]-1] != a[i]`, not on index equality — otherwise duplicates loop forever.
+- `cnt[v]` on an `unordered_map` **inserts** `v` with value 0. Use `.count()` / `.find()` when you only mean to read, especially inside a loop over the same map.
+- Prefix-product problems: a single zero zeroes everything after it, two zeroes zero everything. The two-sweep template handles both without special-casing — don't add a divide-by-total shortcut.
+- `Longest consecutive`: the `continue`-on-non-head check is what makes it `O(n)`. Without it you re-walk the same run and it becomes `O(n²)`.
+- 26-count keys: `"#1#0#2"` style separators matter. `"11"` and `"1","1"` collide without them.
+- Matrix in place: *transpose then reverse each row* rotates clockwise; reverse rows **then** transpose rotates anticlockwise. Pick deliberately.

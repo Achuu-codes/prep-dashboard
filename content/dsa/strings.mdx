@@ -1,0 +1,138 @@
+### When to reach for this
+
+- **"Find every occurrence of a pattern"** → KMP with the prefix function, or rolling hash. Both `O(n + m)`.
+- **"Longest prefix that is also a suffix / smallest period / is this string a repeated block"** → the prefix function, read off `pi[n-1]`. These are one-liners once you have it.
+- **"Longest substring starting at i that matches a prefix of s"** → Z-function.
+- **"Compare many substrings for equality"** → prefix hashes, `O(1)` per comparison. Combine with binary search for longest-common-extension queries.
+- **"Longest / count of palindromic substrings"** → Manacher in `O(n)`; centre expansion is `O(n²)` but fine up to `n ≈ 1000` and much easier to get right under pressure.
+- **"Distinct substrings, suffix ranking"** → suffix array, or hashing plus binary search.
+
+### Templates
+
+```cpp
+// Prefix function: pi[i] = longest proper prefix of s[0..i] that is also
+// a suffix of it. The fallback is a WHILE loop -- you may drop several borders.
+vector<int> prefixFunction(const string& s) {
+    int n = s.size();
+    vector<int> pi(n, 0);
+    for (int i = 1; i < n; ++i) {
+        int j = pi[i-1];                              // pi[i-1], not pi[i]
+        while (j > 0 && s[i] != s[j]) j = pi[j-1];
+        if (s[i] == s[j]) ++j;
+        pi[i] = j;
+    }
+    return pi;
+}
+```
+
+```cpp
+// All occurrences of p in s, via the sentinel trick.
+// The separator must NOT occur in either string.
+vector<int> findAll(const string& s, const string& p) {
+    int m = p.size();
+    string t = p + '\1' + s;
+    vector<int> pi = prefixFunction(t), out;
+    for (int i = m + 1; i < (int)t.size(); ++i)
+        if (pi[i] == m) out.push_back(i - 2 * m);     // start index inside s
+    return out;
+}
+```
+
+```cpp
+// Z-function: z[i] = length of the longest common prefix of s and s[i..]
+vector<int> zFunction(const string& s) {
+    int n = s.size();
+    vector<int> z(n, 0);
+    z[0] = n;                                         // convention: fix one
+    for (int i = 1, l = 0, r = 0; i < n; ++i) {
+        if (i < r) z[i] = min(r - i, z[i - l]);
+        while (i + z[i] < n && s[z[i]] == s[i + z[i]]) ++z[i];
+        if (i + z[i] > r) { l = i; r = i + z[i]; }
+    }
+    return z;
+}
+```
+
+```cpp
+// Rolling hash mod 2^61-1 with a RANDOM base: collision- and hack-resistant.
+struct Hashing {
+    static const unsigned long long M = (1ULL << 61) - 1;
+    unsigned long long B;
+    vector<unsigned long long> h, pw;
+
+    static unsigned long long mul(unsigned long long a, unsigned long long b) {
+        __uint128_t c = (__uint128_t)a * b;
+        unsigned long long lo = (unsigned long long)(c & M);
+        unsigned long long hi = (unsigned long long)(c >> 61);
+        lo += hi;
+        return lo >= M ? lo - M : lo;
+    }
+    explicit Hashing(const string& s) {
+        mt19937_64 rng(chrono::steady_clock::now().time_since_epoch().count());
+        B = 131 + rng() % 1000000;
+        int n = s.size();
+        h.assign(n + 1, 0);
+        pw.assign(n + 1, 1);
+        for (int i = 0; i < n; ++i) {
+            h[i+1] = (mul(h[i], B) + s[i]) % M;
+            pw[i+1] = mul(pw[i], B);
+        }
+    }
+    unsigned long long get(int l, int len) {          // hash of s[l .. l+len-1]
+        unsigned long long x = h[l + len] + M - mul(h[l], pw[len]);
+        return x >= M ? x - M : x;
+    }
+};
+```
+
+```cpp
+// Manacher: d[i] = palindrome radius around centre i of the padded string.
+// Longest palindrome length = max(d) - 1.
+vector<int> manacher(const string& s) {
+    string t = "#";
+    for (char c : s) { t += c; t += '#'; }
+    int n = t.size();
+    vector<int> d(n, 0);
+    for (int i = 0, l = 0, r = -1; i < n; ++i) {
+        int k = i > r ? 1 : min(d[l + r - i], r - i + 1);
+        while (i - k >= 0 && i + k < n && t[i - k] == t[i + k]) ++k;
+        d[i] = k--;
+        if (i + k > r) { l = i - k; r = i + k; }
+    }
+    return d;
+}
+```
+
+```cpp
+// Periodicity, straight from the prefix function
+int n = s.size();
+vector<int> pi = prefixFunction(s);
+int border = pi[n-1];                      // longest proper prefix = suffix
+int period = n - border;                   // the smallest period
+bool isRepetition = (n % period == 0) && period < n;   // divisibility matters
+int copies = isRepetition ? n / period : 1;
+```
+
+### Complexity
+
+| Pattern | Time | Space |
+| --- | --- | --- |
+| Prefix function / KMP search | `O(n + m)` | `O(n + m)` |
+| Z-function | `O(n)` | `O(n)` |
+| Hash build / substring query | `O(n)` / `O(1)` | `O(n)` |
+| Manacher | `O(n)` | `O(n)` |
+| Centre expansion | `O(n²)` | `O(1)` |
+| Suffix array (sort-based) | `O(n log² n)` | `O(n)` |
+
+### Pitfalls
+
+- `j = pi[i-1]`, never `pi[i]`. That one index is the classic prefix-function bug and it produces *almost* correct output.
+- The fallback must be a `while`. A single `if` fails on inputs that need to drop two or more borders, like `"aabaaab"`.
+- The KMP sentinel must be outside the alphabet. Reusing `'#'` or `'$'` when the input may contain it breaks silently on exactly the adversarial test.
+- **A single `10^9+7` modulus with a fixed base is both hackable and collision-prone** at `10^5` substrings. Use `2^61-1` with a random base, or two independent moduli.
+- Hash equality is not string equality. For a correctness-critical comparison, verify the match or accept a quantified failure probability.
+- Manacher returns radii over the **padded** string; converting back is where the off-by-ones live. Length is `max(d) - 1`.
+- Pick a convention for `z[0]` (`n` here) and stick to it. Code that treats `z[0]` as a match length misbehaves at index 0.
+- The repetition test needs **divisibility**: `n % (n - pi[n-1]) == 0`. Without it you have found *a* period, not a tiling.
+- Recomputing the prefix function inside a loop turns an `O(n)` algorithm into `O(n²)` — build it once, query it many times.
+- `string::substr` copies. In a hot loop, compare hashes or indices instead.

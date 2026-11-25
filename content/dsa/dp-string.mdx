@@ -1,0 +1,124 @@
+### When to reach for this
+
+- **"Minimum operations to turn a into b"** (insert / delete / replace) → edit distance. Variants drop an operation or re-weight them.
+- **"Longest common subsequence / shortest common supersequence / minimum deletions to make equal"** → all are LCS with arithmetic on top: `SCS = n + m - LCS`, `deletions = n + m - 2·LCS`.
+- **"Longest palindromic subsequence"** → `LCS(s, reverse(s))`, or interval DP. **Longest palindromic *substring* is not this** — expand around centres, or use Manacher.
+- **"Pattern with wildcards"** → two different languages: `'*'` meaning *any run* (wildcard), versus `'x*'` meaning *zero or more of the previous char* (regex). The recurrences are not interchangeable.
+- **"Can c be formed by interleaving a and b"** → `dp[i][j]` over the two consumed prefixes.
+- Shape test: two sequences and a per-character decision → 2D DP indexed by the two prefixes, `O(n·m)`.
+
+### Templates
+
+```cpp
+// Edit distance with rolling rows. prev = row i-1, cur = row i.
+int editDistance(const string& a, const string& b) {
+    int n = a.size(), m = b.size();
+    vector<int> prev(m + 1), cur(m + 1);
+    for (int j = 0; j <= m; ++j) prev[j] = j;         // base row: insert all
+    for (int i = 1; i <= n; ++i) {
+        cur[0] = i;                                   // reset every row
+        for (int j = 1; j <= m; ++j)
+            cur[j] = a[i-1] == b[j-1]
+                   ? prev[j-1]                                  // free match
+                   : 1 + min({prev[j-1],   // replace (diagonal)
+                              prev[j],     // delete from a (up)
+                              cur[j-1]});  // insert into a (left)
+        swap(prev, cur);
+    }
+    return prev[m];                                   // answer is in prev
+}
+```
+
+```cpp
+// LCS, rolling. Everything in the "minimum deletions / supersequence" family
+// is this number plus arithmetic.
+int lcs(const string& a, const string& b) {
+    int n = a.size(), m = b.size();
+    vector<int> prev(m + 1, 0), cur(m + 1, 0);
+    for (int i = 1; i <= n; ++i) {
+        cur[0] = 0;
+        for (int j = 1; j <= m; ++j)
+            cur[j] = a[i-1] == b[j-1] ? prev[j-1] + 1
+                                      : max(prev[j], cur[j-1]);
+        swap(prev, cur);
+    }
+    return prev[m];
+}
+```
+
+```cpp
+// Longest palindromic SUBSEQUENCE: interval DP, i descending so i+1 is ready
+int lps(const string& s) {
+    int n = s.size();
+    vector<vector<int>> dp(n, vector<int>(n, 0));
+    for (int i = n - 1; i >= 0; --i) {
+        dp[i][i] = 1;
+        for (int j = i + 1; j < n; ++j)
+            dp[i][j] = s[i] == s[j] ? dp[i+1][j-1] + 2
+                                    : max(dp[i+1][j], dp[i][j-1]);
+    }
+    return dp[0][n-1];
+}
+```
+
+```cpp
+// Wildcard: '?' = exactly one char, '*' = any run including empty
+bool wildcard(const string& s, const string& p) {
+    int n = s.size(), m = p.size();
+    vector<char> prev(m + 1, 0), cur(m + 1, 0);
+    prev[0] = 1;
+    for (int j = 1; j <= m; ++j) prev[j] = prev[j-1] && p[j-1] == '*';
+    for (int i = 1; i <= n; ++i) {
+        cur[0] = 0;                                   // non-empty s vs empty p
+        for (int j = 1; j <= m; ++j)
+            cur[j] = p[j-1] == '*'
+                   ? (cur[j-1] || prev[j])            // empty run, or absorb s[i-1]
+                   : ((p[j-1] == '?' || p[j-1] == s[i-1]) && prev[j-1]);
+        swap(prev, cur);
+    }
+    return prev[m];
+}
+```
+
+```cpp
+// Regex: '.' = any char, 'x*' = zero or more of the PREVIOUS char. Needs j-2.
+bool regexMatch(const string& s, const string& p) {
+    int n = s.size(), m = p.size();
+    vector<vector<char>> dp(n + 1, vector<char>(m + 1, 0));
+    dp[0][0] = 1;
+    for (int j = 2; j <= m; ++j) if (p[j-1] == '*') dp[0][j] = dp[0][j-2];
+    for (int i = 1; i <= n; ++i)
+        for (int j = 1; j <= m; ++j) {
+            if (p[j-1] == '*') {
+                bool match = p[j-2] == '.' || p[j-2] == s[i-1];
+                dp[i][j] = dp[i][j-2]                  // use zero copies
+                        || (match && dp[i-1][j]);      // consume one more
+            } else {
+                dp[i][j] = (p[j-1] == '.' || p[j-1] == s[i-1]) && dp[i-1][j-1];
+            }
+        }
+    return dp[n][m];
+}
+```
+
+### Complexity
+
+| Pattern | Time | Space |
+| --- | --- | --- |
+| Edit distance / LCS | `O(n·m)` | `O(min(n,m))` rolling |
+| LCS reconstruction | `O(n·m)` | `O(n·m)` — the full table is required |
+| Palindromic subsequence | `O(n²)` | `O(n²)`, or `O(n)` rolling |
+| Wildcard / regex matching | `O(n·m)` | `O(m)` / `O(n·m)` |
+| Interleaving | `O(n·m)` | `O(m)` |
+
+### Pitfalls
+
+- **Base row and column are not zero** for edit distance: row 0 is `j`, column 0 is `i`. Zeroing them gives an answer that is too small and still looks reasonable.
+- Reset `cur[0]` on **every** row. Left over from the previous row, it silently corrupts the whole row.
+- After `swap(prev, cur)` the result lives in `prev`. Returning `cur[m]` reads a stale row.
+- Name the three sources once and trust it: `prev[j-1]` = diagonal = replace, `prev[j]` = up = delete, `cur[j-1]` = left = insert. Mixing up/left still passes equal-length tests.
+- **Palindromic subsequence is not palindromic substring.** Subsequence is this DP; substring is centre expansion or Manacher.
+- Interval DP needs `i` descending and `j` ascending, so `dp[i+1][j-1]` is already final.
+- Wildcard `'*'` and regex `'x*'` are different languages. Copying the wrong template is the most common failure in this topic.
+- Regex looks back two positions — guard `j ≥ 2` and initialise `dp[0][j]` from `dp[0][j-2]`, or `"a*"` matching the empty string fails.
+- Reconstructing the actual alignment needs the full 2D table; the rolling version cannot backtrack.
